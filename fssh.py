@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 import os
 import sys
+import time
 import getopt
+import socket
+import getpass
 import requests
 import subprocess
 
@@ -58,25 +61,57 @@ def helpMe():
  -u, --username <string> GitHub username.
  -r, --run               Run script.
  -k, --key <string>      Public part of an SSH keypair.
+ -v, --verbal            Display key when running.
  -s, --screen <string>   Create a screen with the provided name (see `man screen` for more info.)
  -l, --list              List existing screen instances.
  -a, --attach <string>   Attach to an existing screen instance with the provided name.
  -d, --delete <string>   Delete an existing screen instance defined by the provided name."""
     print(helpMessage)
 
+def start(keys, verbal: bool = False):
+    try:
+        with open(os.environ['HOME']+'/.ssh/known_hosts', 'a+') as known_hosts:
+            for k in keys:
+                known_hosts.write('\n'+k)
+        print(f'Added key(s) to {os.environ["HOME"]}/.ssh/known_hosts')
+        print('Your friend can now access this computer with:')
+        ipaddr = socket.gethostbyname(socket.gethostname())
+        if ipaddr.startswith('127.0'):
+            try:
+                ipaddr = requests.get('https://api.ipify.org').text
+            except:
+                ipaddr = socket.gethostbyname(socket.gethostname())
+        print(f'    ssh {getpass.getuser()}@{ipaddr}')
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        outfile = ''
+        with open(os.environ['HOME']+'/.ssh/known_hosts', 'r+') as known_hosts:
+            for line in known_hosts:
+                if str(line) in keys:
+                    continue
+                else:
+                    outfile += line
+            print(outfile)
+            known_hosts.write(outfile)
+        print(f'Keys removed from {os.environ["HOME"]}/.ssh/known_hosts')
+
 def getArgs(argv):
     try:
-        opts, args = getopt.getopt(argv, "k:ru:s:ha:d:l", ["help", "sudo", "run", "username=", "key=", "screen=", "list=", "attach=", "delete="])
+        opts, args = getopt.getopt(argv, "k:ru:s:ha:d:lv", ["help", "sudo", "run", "verbal", "username=", "key=", "screen=", "list=", "attach=", "delete="])
     except getopt.GetoptError:
         print('Invalid argument')
         exit()
 
     sudoCheck = bool(True)
+    verbal = bool(False)
     username = ''
     pubkey = ''
     for opt, arg in opts:
         if opt == "--sudo":
             sudoCheck = bool(False)
+        elif opt in ("-v", "--verbal"):
+            verbal = bool(True)
         elif opt in ("-u", "--username"):
             username = str(arg)
         elif opt in ("-k", "--key"):
@@ -106,8 +141,7 @@ def getArgs(argv):
                 key = pubkey
 
             if username and userHasKeys or pubkey:
-                print('Test passed successfully')
-                print(key)
+                start(key, verbal)
             else:
                 print('Key or GitHub user with a valid public key required, see --help for more details.')
 
