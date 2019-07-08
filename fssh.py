@@ -2,6 +2,7 @@
 import os
 import sys
 import time
+import shutil
 import getopt
 import socket
 import getpass
@@ -28,52 +29,51 @@ class Screen:
     def list(self):
         subprocess.call(['screen', '-ls'])
 
-def getGithubPubkey(username: str):
+
+def getPubkey(username: str):
     """Get a GitHub user's public SSH keys.
 
     :param username: username of github user
     :type username: str
     :return: an array of ssh keys
-    :rtype:
+    :rtype: array
     """
     url = f'https://api.github.com/users/{username}/keys'
     data = requests.get(url).json()
     keys = []
     for key in data:
-        keys.append(key)
-    return keys
+        keys.append(key['key'])
 
-def checkRootStatus():
-    """Check if script is run as root.
+    return keys if bool(keys) else False
 
-    :return: is script run as root
-    :rtype: bool
-    """
-    return not int(os.getuid()) > 0
 
 def helpMe():
     """Help formatter.
     """
-    helpMessage: str = """Usage: python3 fssh.py
+    print("""Usage: python3 fssh.py
 
  -h, --help              Display this message.
-     --sudo              Run script without root check.
- -u, --username <string> GitHub username.
- -r, --run               Run script.
- -k, --key <string>      Public part of an SSH keypair.
- -v, --verbal            Display key when running.
- -s, --screen <string>   Create a screen with the provided name (see `man screen` for more info.)
+ -r, --run <username>    Run script. Provide GitHub username.
+ -u, --users             Connected SSH users (PID).
+ -k, --kill <PID>        Kill SSH connection by PID.
+ -s, --screen <instance> Create a screen with the provided name (see `man screen` for more info.)
  -l, --list              List existing screen instances.
- -a, --attach <string>   Attach to an existing screen instance with the provided name.
- -d, --delete <string>   Delete an existing screen instance defined by the provided name."""
-    print(helpMessage)
+ -a, --attach <instance> Attach to an existing screen instance with the provided name.
+ -d, --delete <instance> Delete an existing screen instance defined by the provided name.""")
 
-def start(keys, verbal: bool = False):
+
+def start(keys):
+    khPath = str(os.environ['HOME'] + '/.ssh/known_hosts')
+
     try:
-        with open(os.environ['HOME']+'/.ssh/known_hosts', 'a+') as known_hosts:
+        shutil.copyfile(khPath, khPath + '_fssh')
+
+        with open(khPath, 'a+') as khFile:
             for k in keys:
-                known_hosts.write('\n'+k)
-        print(f'Added key(s) to {os.environ["HOME"]}/.ssh/known_hosts')
+                khFile.write('\n'+k)
+
+        print(f'Added key(s) to {khPath}')
+        print('Please do not modify the known_hosts file while the script is running, press ^C to stop the script.')
         print('Your friend can now access this computer with:')
         ipaddr = socket.gethostbyname(socket.gethostname())
         if ipaddr.startswith('127.0'):
@@ -82,44 +82,23 @@ def start(keys, verbal: bool = False):
             except:
                 ipaddr = socket.gethostbyname(socket.gethostname())
         print(f'    ssh {getpass.getuser()}@{ipaddr}')
+
         while True:
             time.sleep(1)
+
     except KeyboardInterrupt:
-        outfile = ''
-        with open(os.environ['HOME']+'/.ssh/known_hosts', 'r+') as known_hosts:
-            for line in known_hosts:
-                if str(line) in keys:
-                    continue
-                else:
-                    outfile += line
-            print(outfile)
-            known_hosts.write(outfile)
-        print(f'Keys removed from {os.environ["HOME"]}/.ssh/known_hosts')
+        os.remove(khPath)
+        shutil.copyfile(khPath + '_fssh', khPath)
+        os.remove(khPath + '_fssh')
+
+        print(f'\nKeys removed from {khPath}')
+
 
 def getArgs(argv):
     try:
-        opts, args = getopt.getopt(argv, "k:ru:s:ha:d:lv", ["help", "sudo", "run", "verbal", "username=", "key=", "screen=", "list=", "attach=", "delete="])
+        opts, args = getopt.getopt(argv, "hr:uk:s:la:d:", ["help", "run=", "users", "kill=", "screen=", "list", "attach=", "delete="])
     except getopt.GetoptError:
         print('Invalid argument')
-        exit()
-
-    sudoCheck = bool(True)
-    verbal = bool(False)
-    username = ''
-    pubkey = ''
-    for opt, arg in opts:
-        if opt == "--sudo":
-            sudoCheck = bool(False)
-        elif opt in ("-v", "--verbal"):
-            verbal = bool(True)
-        elif opt in ("-u", "--username"):
-            username = str(arg)
-        elif opt in ("-k", "--key"):
-            pubkey = str(arg)
-
-    if sudoCheck and checkRootStatus():
-        print('Running the script as root could lead to unwanted side-effects.')
-        print('Exiting script, if you really want to run as root, pass the --sudo argument.')
         exit()
 
     for opt, arg in opts:
@@ -128,23 +107,23 @@ def getArgs(argv):
             exit()
 
         elif opt in ("-r", "--run"):
-            pubkeysDict = getGithubPubkey(username)
+            username = str(arg) if bool(str(arg)) else ''
+            keys = getPubkey(username)
 
-            try:
-                pubkeysDict[0]['id']
-                userHasKeys = bool(True)
-                key = []
-                for item in pubkeysDict:
-                    key.append(item['key'])
-            except:
-                userHasKeys = bool(False)
-                key = pubkey
-
-            if username and userHasKeys or pubkey:
-                start(key, verbal)
+            if bool(username) and bool(keys):
+                start(keys)
             else:
-                print('Key or GitHub user with a valid public key required, see --help for more details.')
+                print('GitHub user with a valid public key required, see --help for more details.')
 
+        # SSH connections
+        elif opt in ("-u", "--users"):
+            users = str(subprocess.check_output(['pgrep', 'sshd']))
+            print('PID of connected SSH sessions (pgrep sshd):\n' + users[2:-1].replace('\\n', '\n'))
+        elif opt in ("-k", "--kill"):
+            PID = str(arg)
+            print(subprocess.check_output(['kill', '-9', PID]))
+
+        # Screen-related args
         elif opt in ("-s", "--screen"):
             ScreenInstance = Screen(str(arg))
             ScreenInstance.create()
@@ -157,6 +136,9 @@ def getArgs(argv):
         elif opt in ("-l", "--list"):
             ScreenInstance = Screen()
             ScreenInstance.list()
+        else:
+            helpMe()
+            exit()
 
 
 if __name__ == '__main__':
