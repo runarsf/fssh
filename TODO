@@ -1,0 +1,8 @@
+fssh:
+  ☐ Key indexing.
+  ☐ Custom authorized hosts.
+  ☐ Custom gitlab host.
+  ☐ --permanent flag.
+  ☐ Custom path for installation.
+  ☐ Check if GitHub/Lab user exists before curl/wget.
+  ✔ --verbose flag.
