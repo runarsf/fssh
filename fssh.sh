@@ -13,10 +13,10 @@ grant() {
   # https://gitlab.com/runarsf.keys
   #if [ "$(command -v curl >/dev/null 2>&1)" ]; then
   if [ "$(command -v curl)" ]; then
-    (set "${verbosity}"; \cp -f "${HOME}"/.ssh/authorized_keys "${HOME}"/.ssh/authorized_keys.bak)
+    (set "${verbosity}"; cp "${HOME}"/.ssh/authorized_keys "${HOME}"/.ssh/authorized_keys.bak)
     (set "${verbosity}"; curl --silent --show-error https://"${host}"/"${user}".keys >> "${HOME}"/.ssh/authorized_keys)
   elif [ "$(command -v wget)" ]; then
-    (set "${verbosity}"; \cp -f "${HOME}"/.ssh/authorized_keys "${HOME}"/.ssh/authorized_keys.bak)
+    (set "${verbosity}"; cp "${HOME}"/.ssh/authorized_keys "${HOME}"/.ssh/authorized_keys.bak)
     (set "${verbosity}"; wget --quiet --no-verbose https://"${host}"/"${user}".keys -O ->> "${HOME}"/.ssh/authorized_keys)
   else
     echo "This script needs either curl or wget to run, but neither of them seem to be installed."
